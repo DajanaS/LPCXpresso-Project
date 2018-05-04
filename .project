@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>LPCXpressoProject</name>
+	<name>LPCXpresso-Project</name>
 	<comment></comment>
 	<projects>
 		<project>Lib_CMSISv1p30_LPC17xx</project>
