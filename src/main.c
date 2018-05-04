@@ -27,7 +27,7 @@
 static uint32_t msTicks = 0;
 static uint8_t buf[10];
 
-int32_t temperatures[12];
+int32_t temperatures[13];
 
 static void intToString(int value, uint8_t* pBuf, uint32_t len, uint32_t base)
 {
@@ -176,13 +176,24 @@ void display_menu(void) {
 	//
 }
 
-void draw_graph_real_time(int32_t values[], int n) {
+void draw_graph_real_time(int32_t values[13], int n) {
 	oled_clearScreen(OLED_COLOR_WHITE);
-	int k = 95;
-	for(int j = n-1; j >=0; j--) {
-		oled_line(k-8, values[j-1], k, values[j], OLED_COLOR_BLACK);
-		k-=8;
+	int j = n-1;
+	int k = 96;
+	for(j = n-1, k = 96; j > 0; j--, k-=8) {
+		int32_t val1 = k-8;
+		int32_t val2 = 64 - values[j-1];
+		int32_t val3 = k;
+		int32_t val4 = 64 - values[j];
+		oled_line(val1, val2, val3, val4, OLED_COLOR_BLACK);
 	}
+}
+
+uint32_t normalize_temperature(uint32_t val) {
+	double new_val = (double)val;
+	new_val = new_val / 10;
+	new_val = (((new_val - 15) / 20) * 62) + 1;
+	return (uint32_t)new_val;
 }
 
 int main (void)
@@ -220,15 +231,15 @@ int main (void)
     int i = 0;
     while(1) {
         /* Temperature */
+    	if(i >= 13) {
+    		for(int j = 0; j < 12; j++)
+    			temperatures[j] = temperatures[j+1];
+    		i--;
+    	}
         t = temp_read();
-        temperatures[i] = t;
-        if(i < 12)
+        temperatures[i] = normalize_temperature(t);
+        if(i < 13)
         	i++;
-        if(i >= 12) {
-        	for(int j = 0; j < 11; j++)
-        		temperatures[j] = temperatures[j+1];
-        	i--;
-        }
         draw_graph_real_time(temperatures, i);
 
         /* light */
