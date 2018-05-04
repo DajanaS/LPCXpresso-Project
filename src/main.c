@@ -27,6 +27,8 @@
 static uint32_t msTicks = 0;
 static uint8_t buf[10];
 
+int32_t temperatures[12];
+
 static void intToString(int value, uint8_t* pBuf, uint32_t len, uint32_t base)
 {
     static const char* pAscii = "0123456789abcdefghijklmnopqrstuvwxyz";
@@ -170,106 +172,91 @@ static void init_adc(void)
 
 }
 
+void display_menu(void) {
+	//
+}
+
+void draw_graph_real_time(int32_t values[], int n) {
+	oled_clearScreen(OLED_COLOR_WHITE);
+	int k = 95;
+	for(int j = n-1; j >=0; j--) {
+		oled_line(k-8, values[j-1], k, values[j], OLED_COLOR_BLACK);
+		k-=8;
+	}
+}
+
 int main (void)
 {
-    int32_t xoff = 0;
-    int32_t yoff = 0;
-    int32_t zoff = 0;
-
-    int8_t x = 0;
-    int8_t y = 0;
-    int8_t z = 0;
+	// display_menu();
 
     int32_t t = 0;
-    uint32_t lux = 0;
-    uint32_t trim = 0;
-
+    // uint32_t lux = 0;
+    // uint32_t trim = 0;
 
     init_i2c();
     init_ssp();
     init_adc();
 
     oled_init();
-    light_init();
-    acc_init();
-
+    // light_init();
     temp_init (&getTicks);
 
 
 	if (SysTick_Config(SystemCoreClock / 1000)) {
-		    while (1);  // Capture error
+		while (1);  // Capture error
 	}
 
     /*
      * Assume base board in zero-g position when reading first value.
      */
-    acc_read(&x, &y, &z);
-    xoff = 0-x;
-    yoff = 0-y;
-    zoff = 64-z;
 
-    light_enable();
-    light_setRange(LIGHT_RANGE_4000);
+    // light_enable();
+    // light_setRange(LIGHT_RANGE_4000);
 
-    oled_clearScreen(OLED_COLOR_WHITE);
+    // oled_line(0,0,95,63, OLED_COLOR_BLACK);
+    // oled_putString(1,9,  (uint8_t*)"Light  : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+    // oled_putString(1,17, (uint8_t*)"Trimpot: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
-    oled_putString(1,1,  (uint8_t*)"Temp   : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-    oled_putString(1,9,  (uint8_t*)"Light  : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-    oled_putString(1,17, (uint8_t*)"Trimpot: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-    oled_putString(1,25, (uint8_t*)"Acc x  : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-    oled_putString(1,33, (uint8_t*)"Acc y  : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-    oled_putString(1,41, (uint8_t*)"Acc z  : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
+    int i = 0;
     while(1) {
-
-        /* Accelerometer */
-        acc_read(&x, &y, &z);
-        x = x+xoff;
-        y = y+yoff;
-        z = z+zoff;
-
         /* Temperature */
         t = temp_read();
+        temperatures[i] = t;
+        if(i < 12)
+        	i++;
+        if(i >= 12) {
+        	for(int j = 0; j < 11; j++)
+        		temperatures[j] = temperatures[j+1];
+        	i--;
+        }
+        draw_graph_real_time(temperatures, i);
 
         /* light */
-        lux = light_read();
+        // lux = light_read();
 
         /* trimpot */
-		ADC_StartCmd(LPC_ADC,ADC_START_NOW);
+		// ADC_StartCmd(LPC_ADC,ADC_START_NOW);
 		//Wait conversion complete
-		while (!(ADC_ChannelGetStatus(LPC_ADC,ADC_CHANNEL_0,ADC_DATA_DONE)));
-		trim = ADC_ChannelGetData(LPC_ADC,ADC_CHANNEL_0);
+		// while (!(ADC_ChannelGetStatus(LPC_ADC,ADC_CHANNEL_0,ADC_DATA_DONE)));
+		// trim = ADC_ChannelGetData(LPC_ADC,ADC_CHANNEL_0);
 
         /* output values to OLED display */
 
-        intToString(t, buf, 10, 10);
-        oled_fillRect((1+9*6),1, 80, 8, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+        // intToString(t, buf, 10, 10);
+        // oled_fillRect((1+9*6),1, 80, 8, OLED_COLOR_WHITE);
+        // oled_putString((1+9*6),1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
-        intToString(lux, buf, 10, 10);
+        /*intToString(lux, buf, 10, 10);
         oled_fillRect((1+9*6),9, 80, 16, OLED_COLOR_WHITE);
         oled_putString((1+9*6),9, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 
         intToString(trim, buf, 10, 10);
         oled_fillRect((1+9*6),17, 80, 24, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),17, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        intToString(x, buf, 10, 10);
-        oled_fillRect((1+9*6),25, 80, 32, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),25, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        intToString(y, buf, 10, 10);
-        oled_fillRect((1+9*6),33, 80, 40, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),33, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        intToString(z, buf, 10, 10);
-        oled_fillRect((1+9*6),41, 80, 48, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),41, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+        oled_putString((1+9*6),17, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE); */
 
         /* delay */
         Timer0_Wait(200);
     }
-
 }
 
 void check_failed(uint8_t *file, uint32_t line)
