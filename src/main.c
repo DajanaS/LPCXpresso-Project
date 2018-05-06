@@ -197,7 +197,58 @@ void measure_temperature(void) {
 	    Timer0_Wait(200);
 	}
 	display_working_modes();
-	btn2 = 1;
+	btn1 = 1;
+}
+
+void display_menu(void) {
+	display_measurement_options();
+	oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+	led7seg_setChar('1', FALSE);
+	while(1) {
+		btn2 = ((GPIO_ReadValue(1) >> 31) & 0x01);
+		Timer0_Wait(200);
+		if(btn2 == 0) {
+			btn2 = 1;
+			switch(measurement_option) {
+			case 1:
+				measure_temperature();
+				break;
+			case 2:
+				//measure_light();
+				oled_circle(5, 37, 3, OLED_COLOR_BLACK);
+				break;
+			case 3:
+				//measure_potentiometer();
+				break;
+			}
+			break;
+		}
+		btn1 = ((GPIO_ReadValue(0) >> 4) & 0x01);
+		Timer0_Wait(200);
+		if(btn1 == 0) {
+			measurement_option++;
+			btn1 = 1;
+			switch(measurement_option) {
+				case 1:
+					oled_circle(5, 52, 3, OLED_COLOR_WHITE);
+					oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+					led7seg_setChar('1', FALSE);
+					break;
+				case 2:
+					oled_circle(5, 22, 3, OLED_COLOR_WHITE);
+					oled_circle(5, 37, 3, OLED_COLOR_BLACK);
+					led7seg_setChar('2', FALSE);
+					break;
+				case 3:
+					mode = 0;
+					oled_circle(5, 37, 3, OLED_COLOR_WHITE);
+					oled_circle(5, 52, 3, OLED_COLOR_BLACK);
+					led7seg_setChar('3', FALSE);
+					break;
+				}
+			Timer0_Wait(2000);
+		}
+	}
 }
 
 int main (void)
@@ -234,17 +285,22 @@ int main (void)
 	led7seg_setChar('1', FALSE);
 	while(1) {
 		btn2 = ((GPIO_ReadValue(1) >> 31) & 0x01);
+		Timer0_Wait(200);
 		if(btn2 == 0) {
+			btn2 = 1;
 			switch(mode) {
 			case 1:
-				display_measurement_options();
+				display_menu();
+				display_working_modes();
 				oled_circle(5, 22, 3, OLED_COLOR_BLACK);
 				break;
 			case 2:
+				display_menu();
 				display_working_modes();
 				oled_circle(5, 37, 3, OLED_COLOR_BLACK);
 				break;
 			case 3:
+				display_menu();
 				display_working_modes();
 				oled_circle(5, 52, 3, OLED_COLOR_BLACK);
 				break;
@@ -254,24 +310,22 @@ int main (void)
 		Timer0_Wait(200);
 		if(btn1 == 0) {
 			mode++;
+			btn1 = 1;
 			switch(mode) {
 				case 1:
 					oled_circle(5, 52, 3, OLED_COLOR_WHITE);
 					oled_circle(5, 22, 3, OLED_COLOR_BLACK);
-					btn1 = 1;
 					led7seg_setChar('1', FALSE);
 					break;
 				case 2:
 					oled_circle(5, 22, 3, OLED_COLOR_WHITE);
 					oled_circle(5, 37, 3, OLED_COLOR_BLACK);
-					btn1 = 1;
 					led7seg_setChar('2', FALSE);
 					break;
 				case 3:
 					mode = 0;
 					oled_circle(5, 37, 3, OLED_COLOR_WHITE);
 					oled_circle(5, 52, 3, OLED_COLOR_BLACK);
-					btn1 = 1;
 					led7seg_setChar('3', FALSE);
 					break;
 				}
