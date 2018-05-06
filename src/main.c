@@ -1,14 +1,12 @@
 /*****************************************************************************
- *   Peripherals such as temp sensor, light sensor, accelerometer,
- *   and trim potentiometer are monitored and values are written to
- *   the OLED display.
+ *   Peripherals such as temperature sensor, light sensor
+ *   and trim potentiometer are monitored and values are
+ *   displayed as graphics to the OLED display.
  *
  *   Copyright(C) 2010, Embedded Artists AB
  *   All rights reserved.
  *
  ******************************************************************************/
-
-
 
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_i2c.h"
@@ -16,7 +14,6 @@
 #include "lpc17xx_ssp.h"
 #include "lpc17xx_adc.h"
 #include "lpc17xx_timer.h"
-
 
 #include "light.h"
 #include "oled.h"
@@ -29,62 +26,10 @@ static uint32_t msTicks = 0;
 static uint8_t buf[10];
 
 int32_t temperatures[13];
-uint8_t btn1 = 0;
-uint8_t btn2 = 0;
-int mode = 1;
-
-static void intToString(int value, uint8_t* pBuf, uint32_t len, uint32_t base)
-{
-    static const char* pAscii = "0123456789abcdefghijklmnopqrstuvwxyz";
-    int pos = 0;
-    int tmpValue = value;
-
-    // the buffer must not be null and at least have a length of 2 to handle one
-    // digit and null-terminator
-    if (pBuf == NULL || len < 2)
-    {
-        return;
-    }
-
-    // a valid base cannot be less than 2 or larger than 36
-    // a base value of 2 means binary representation. A value of 1 would mean only zeros
-    // a base larger than 36 can only be used if a larger alphabet were used.
-    if (base < 2 || base > 36)
-    {
-        return;
-    }
-
-    // negative value
-    if (value < 0)
-    {
-        tmpValue = -tmpValue;
-        value    = -value;
-        pBuf[pos++] = '-';
-    }
-
-    // calculate the required length of the buffer
-    do {
-        pos++;
-        tmpValue /= base;
-    } while(tmpValue > 0);
-
-
-    if (pos > len)
-    {
-        // the len parameter is invalid.
-        return;
-    }
-
-    pBuf[pos] = '\0';
-
-    do {
-        pBuf[--pos] = pAscii[value % base];
-        value /= base;
-    } while(value > 0);
-
-    return;
-
-}
+uint8_t btn1 = 0; // SW3
+uint8_t btn2 = 0; // SW4
+int mode = 1; // 1 - real-time, 2 - save, 3 - show saved
+int measurement_option = 1; // 1 - temperature, 2 - light, 3 - potentiometer
 
 void SysTick_Handler(void) {
     msTicks++;
@@ -179,12 +124,17 @@ static void init_adc(void)
 void display_working_modes(void) {
 	oled_clearScreen(OLED_COLOR_WHITE);
 	oled_putString(12, 1, "=== MENU ===", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-	// oled_circle(5, 22, 3, OLED_COLOR_BLACK);
 	oled_putString(20, 19, "Real time", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-	// oled_circle(5, 37, 3, OLED_COLOR_BLACK);
 	oled_putString(20, 34, "Save", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-	// oled_circle(5, 52, 3, OLED_COLOR_BLACK);
 	oled_putString(20, 49, "Show saved", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+}
+
+void display_measurement_options(void) {
+	oled_clearScreen(OLED_COLOR_WHITE);
+	oled_putString(5, 1, "=== SELECT ===", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(15, 19, "Temperature", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(15, 34, "Light", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	oled_putString(15, 49, "Potentiometer", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 }
 
 void draw_graph_real_time(int32_t values[13], int n, char* measurements) {
@@ -287,7 +237,7 @@ int main (void)
 		if(btn2 == 0) {
 			switch(mode) {
 			case 1:
-				measure_temperature();
+				display_measurement_options();
 				oled_circle(5, 22, 3, OLED_COLOR_BLACK);
 				break;
 			case 2:
@@ -295,8 +245,8 @@ int main (void)
 				oled_circle(5, 37, 3, OLED_COLOR_BLACK);
 				break;
 			case 3:
-				oled_circle(5, 52, 3, OLED_COLOR_BLACK);
 				display_working_modes();
+				oled_circle(5, 52, 3, OLED_COLOR_BLACK);
 				break;
 			}
 		}
