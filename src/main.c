@@ -22,12 +22,16 @@
 #include "oled.h"
 #include "temp.h"
 #include "acc.h"
+#include "led7seg.h"
 
 
 static uint32_t msTicks = 0;
 static uint8_t buf[10];
 
 int32_t temperatures[13];
+uint8_t btn1 = 0;
+uint8_t btn2 = 0;
+int mode = 1;
 
 static void intToString(int value, uint8_t* pBuf, uint32_t len, uint32_t base)
 {
@@ -172,35 +176,82 @@ static void init_adc(void)
 
 }
 
-void display_menu(void) {
-	//
+void display_working_modes(void) {
+	oled_clearScreen(OLED_COLOR_WHITE);
+	oled_putString(12, 1, "=== MENU ===", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	// oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+	oled_putString(20, 19, "Real time", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	// oled_circle(5, 37, 3, OLED_COLOR_BLACK);
+	oled_putString(20, 34, "Save", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	// oled_circle(5, 52, 3, OLED_COLOR_BLACK);
+	oled_putString(20, 49, "Show saved", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 }
 
-void draw_graph_real_time(int32_t values[13], int n) {
+void draw_graph_real_time(int32_t values[13], int n, char* measurements) {
 	oled_clearScreen(OLED_COLOR_WHITE);
-	int j = n-1;
-	int k = 96;
-	for(j = n-1, k = 96; j > 0; j--, k-=8) {
-		int32_t val1 = k-8;
-		int32_t val2 = 64 - values[j-1];
-		int32_t val3 = k;
-		int32_t val4 = 64 - values[j];
-		oled_line(val1, val2, val3, val4, OLED_COLOR_BLACK);
-	}
+	oled_putString(12, 1, measurements, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	for(int j = n-1, k = 96; j > 0; j--, k-=8)
+		oled_line(k-8, 64 - values[j-1], k, 64 - values[j], OLED_COLOR_BLACK);
 }
 
 uint32_t normalize_temperature(uint32_t val) {
 	double new_val = (double)val;
 	new_val = new_val / 10;
-	new_val = (((new_val - 15) / 20) * 62) + 1;
+	new_val = (((new_val - 15) / 20) * 43) + 10;
 	return (uint32_t)new_val;
+}
+
+void measure_temperature(void) {
+	int32_t t = 0;
+	int i = 0;
+	while(1) {
+	    /* Temperature */
+		if(i >= 13) {
+			for(int j = 0; j < 12; j++)
+				temperatures[j] = temperatures[j+1];
+			i--;
+		}
+		btn1 = ((GPIO_ReadValue(0) >> 4) & 0x01);
+		if(btn1 == 0)
+			break;
+	    t = temp_read();
+	    temperatures[i] = normalize_temperature(t);
+	    if(i < 13)
+	    	i++;
+	    draw_graph_real_time(temperatures, i, "Temperature");
+
+	    /* light */
+	    // lux = light_read();
+
+	    /* trimpot */
+		// ADC_StartCmd(LPC_ADC,ADC_START_NOW);
+		//Wait conversion complete
+		// while (!(ADC_ChannelGetStatus(LPC_ADC,ADC_CHANNEL_0,ADC_DATA_DONE)));
+		// trim = ADC_ChannelGetData(LPC_ADC,ADC_CHANNEL_0);
+
+	    /* output values to OLED display */
+
+	    // intToString(t, buf, 10, 10);
+	    // oled_fillRect((1+9*6),1, 80, 8, OLED_COLOR_WHITE);
+	    // oled_putString((1+9*6),1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	    /*intToString(lux, buf, 10, 10);
+	    oled_fillRect((1+9*6),9, 80, 16, OLED_COLOR_WHITE);
+	    oled_putString((1+9*6),9, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+	    intToString(trim, buf, 10, 10);
+	    oled_fillRect((1+9*6),17, 80, 24, OLED_COLOR_WHITE);
+	    oled_putString((1+9*6),17, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE); */
+
+	    /* delay */
+	    Timer0_Wait(200);
+	}
+	display_working_modes();
+	btn2 = 1;
 }
 
 int main (void)
 {
-	// display_menu();
-
-    int32_t t = 0;
     // uint32_t lux = 0;
     // uint32_t trim = 0;
 
@@ -212,6 +263,7 @@ int main (void)
     // light_init();
     temp_init (&getTicks);
 
+    led7seg_init();
 
 	if (SysTick_Config(SystemCoreClock / 1000)) {
 		while (1);  // Capture error
@@ -227,47 +279,55 @@ int main (void)
     // oled_line(0,0,95,63, OLED_COLOR_BLACK);
     // oled_putString(1,9,  (uint8_t*)"Light  : ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
     // oled_putString(1,17, (uint8_t*)"Trimpot: ", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-    int i = 0;
-    while(1) {
-        /* Temperature */
-    	if(i >= 13) {
-    		for(int j = 0; j < 12; j++)
-    			temperatures[j] = temperatures[j+1];
-    		i--;
-    	}
-        t = temp_read();
-        temperatures[i] = normalize_temperature(t);
-        if(i < 13)
-        	i++;
-        draw_graph_real_time(temperatures, i);
-
-        /* light */
-        // lux = light_read();
-
-        /* trimpot */
-		// ADC_StartCmd(LPC_ADC,ADC_START_NOW);
-		//Wait conversion complete
-		// while (!(ADC_ChannelGetStatus(LPC_ADC,ADC_CHANNEL_0,ADC_DATA_DONE)));
-		// trim = ADC_ChannelGetData(LPC_ADC,ADC_CHANNEL_0);
-
-        /* output values to OLED display */
-
-        // intToString(t, buf, 10, 10);
-        // oled_fillRect((1+9*6),1, 80, 8, OLED_COLOR_WHITE);
-        // oled_putString((1+9*6),1, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        /*intToString(lux, buf, 10, 10);
-        oled_fillRect((1+9*6),9, 80, 16, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),9, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-
-        intToString(trim, buf, 10, 10);
-        oled_fillRect((1+9*6),17, 80, 24, OLED_COLOR_WHITE);
-        oled_putString((1+9*6),17, buf, OLED_COLOR_BLACK, OLED_COLOR_WHITE); */
-
-        /* delay */
-        Timer0_Wait(200);
-    }
+	display_working_modes();
+	oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+	led7seg_setChar('1', FALSE);
+	while(1) {
+		btn2 = ((GPIO_ReadValue(1) >> 31) & 0x01);
+		if(btn2 == 0) {
+			switch(mode) {
+			case 1:
+				measure_temperature();
+				oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+				break;
+			case 2:
+				display_working_modes();
+				oled_circle(5, 37, 3, OLED_COLOR_BLACK);
+				break;
+			case 3:
+				oled_circle(5, 52, 3, OLED_COLOR_BLACK);
+				display_working_modes();
+				break;
+			}
+		}
+		btn1 = ((GPIO_ReadValue(0) >> 4) & 0x01);
+		Timer0_Wait(200);
+		if(btn1 == 0) {
+			mode++;
+			switch(mode) {
+				case 1:
+					oled_circle(5, 52, 3, OLED_COLOR_WHITE);
+					oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+					btn1 = 1;
+					led7seg_setChar('1', FALSE);
+					break;
+				case 2:
+					oled_circle(5, 22, 3, OLED_COLOR_WHITE);
+					oled_circle(5, 37, 3, OLED_COLOR_BLACK);
+					btn1 = 1;
+					led7seg_setChar('2', FALSE);
+					break;
+				case 3:
+					mode = 0;
+					oled_circle(5, 37, 3, OLED_COLOR_WHITE);
+					oled_circle(5, 52, 3, OLED_COLOR_BLACK);
+					btn1 = 1;
+					led7seg_setChar('3', FALSE);
+					break;
+				}
+			Timer0_Wait(2000);
+		}
+	}
 }
 
 void check_failed(uint8_t *file, uint32_t line)
