@@ -22,16 +22,27 @@
 #include "led7seg.h"
 
 
-static uint32_t msTicks = 0;
-static uint8_t buf[10];
+
+#define NOTE_PIN_HIGH() GPIO_SetValue(0, 1<<26);
+#define NOTE_PIN_LOW()  GPIO_ClearValue(0, 1<<26);
+
+
+uint32_t msTicks = 0;
+uint8_t buf[10];
+uint8_t ch7seg = '1';
+
+char vkupno[5];
 
 int32_t temperatures[13];
+int32_t zapisani[90];
+int32_t measures[13];
 int32_t lights[13];
 int32_t potentiometers[13];
 uint8_t btn1 = 0; // SW3
 uint8_t btn2 = 0; // SW4
 int mode = 1; // 1 - real-time, 2 - save, 3 - show saved
 int measurement_option = 1; // 1 - temperature, 2 - light, 3 - potentiometer
+//uint8_t * song = (uint8_t*)"G1,G1,G1,G1,G1,G1,G1.G1.G1.G1.G1.G1.G1.G1.G1.G1";
 
 void SysTick_Handler(void)
 {
@@ -142,14 +153,6 @@ void display_measurement_options(void)
 	oled_putString(15, 49, "Potentiometer", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
 }
 
-void draw_graph_real_time(int32_t values[13], int n, char* measurements)
-{
-	oled_clearScreen(OLED_COLOR_WHITE);
-	oled_putString(12, 1, measurements, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
-	for(int j = n-1, k = 96; j > 0; j--, k-=8)
-		oled_line(k-8, 64 - values[j-1], k, 64 - values[j], OLED_COLOR_BLACK);
-}
-
 uint32_t normalize_temperature(uint32_t val)
 {
 	double new_val = (double)val;
@@ -247,6 +250,75 @@ void measure_potentiometer(void)
 	btn1 = 1;
 }
 
+void procitaj(int sto)
+{
+	uint16_t dolzina_zapis = 11;
+	int mem = 0;
+	int br = 90;
+	int i = 0;
+	uint16_t offset = 0;
+	int l = 0;
+
+	switch(sto){
+		case 1:
+			offset = 0;
+			l = 3;
+			break;
+		case 2:
+			offset = 3;
+			l = 4;
+			break;
+		case 3:
+			offset = 7;
+			l = 4;
+			break;
+	}
+
+	uint8_t buf[11];
+
+	int minute[br];
+	for(i=0;i<br;i++){
+		eeprom_read(buf,i*dolzina_zapis, dolzina_zapis);
+		char subbuff[5];
+		memcpy(subbuff, &buf[offset], l);
+		subbuff[4] = '\0';
+		printf("%d. Citanje:%s\n", i, subbuff);
+//		int v = atoi(subbuff);
+		char temp[3] = {subbuff[2], subbuff[3], '\0'};
+		long v = strtol(temp, NULL, 10);
+		minute[i] = v;
+		zapisani[i] = v;
+	}
+
+}
+
+
+void displaySaved(void){
+	procitaj(measurement_option);
+	int c = 0;
+	int br = 90;
+	int i = 0;
+
+	while(1){
+		printf("c:%d\n", c);
+
+		if(i >= 13) {
+			for(int j = 0; j < 12; j++)
+				measures[j] = measures[j+1];
+				i--;
+		}
+		//ovde treba da dodademe vrednost od nizata
+		measures[i] = zapisani[c];
+
+		if(c>=br) break;
+		c++;
+		if(i < 13){
+			i++;
+			draw_graph_real_time(measures, i, "Saved data:");
+		}
+	}
+}
+
 void display_menu(void)
 {
 	measurement_option = 1;
@@ -259,14 +331,26 @@ void display_menu(void)
 			btn2 = 1;
 			switch(measurement_option) {
 			case 1:
-				measure_temperature();
-				break;
+				if(mode == 1){
+					measure_temperature();
+					break;
+				} else {
+					displaySaved();
+				}
 			case 2:
-				measure_light();
-				break;
+				if(mode == 1){
+					measure_light();
+					break;
+				} else {
+					displaySaved();
+				}
 			case 0:
-				measure_potentiometer();
-				break;
+				if(mode == 1){
+					measure_potentiometer();
+					break;
+				} else {
+					displaySaved();
+				}
 			}
 			break;
 		}
@@ -295,12 +379,243 @@ void display_menu(void)
 	}
 }
 
+static void change7Seg()
+{
+if (ch7seg > '9')
+    ch7seg = '1';
+led7seg_setChar(ch7seg, FALSE);
+}
+
+
+static uint32_t notes[] = {
+        2272, // A - 440 Hz
+        2024, // B - 494 Hz
+        3816, // C - 262 Hz
+        3401, // D - 294 Hz
+        3030, // E - 330 Hz
+        2865, // F - 349 Hz
+        2551, // G - 392 Hz
+        1136, // a - 880 Hz
+        1012, // b - 988 Hz
+        1912, // c - 523 Hz
+        1703, // d - 587 Hz
+        1517, // e - 659 Hz
+        1432, // f - 698 Hz
+        1275, // g - 784 Hz
+};
+
+static void playNote(uint32_t note, uint32_t durationMs) {
+
+    uint32_t t = 0;
+
+    if (note > 0) {
+
+        while (t < (durationMs*1000)) {
+            NOTE_PIN_HIGH();
+            Timer0_us_Wait(note / 2);
+            //delay32Us(0, note / 2);
+
+            NOTE_PIN_LOW();
+            Timer0_us_Wait(note / 2);
+            //delay32Us(0, note / 2);
+
+            t += note;
+        }
+
+    }
+    else {
+    	Timer0_Wait(durationMs);
+        //delay32Ms(0, durationMs);
+    }
+}
+
+static uint32_t getNote(uint8_t ch)
+{
+    if (ch >= 'A' && ch <= 'G')
+        return notes[ch - 'A'];
+
+    if (ch >= 'a' && ch <= 'g')
+        return notes[ch - 'a' + 7];
+
+    return 0;
+}
+
+static uint32_t getDuration(uint8_t ch)
+{
+    if (ch < '0' || ch > '9')
+        return 400;
+
+    /* number of ms */
+
+    return (ch - '0') * 200;
+}
+
+static uint32_t getPause(uint8_t ch)
+{
+    switch (ch) {
+    case '+':
+        return 0;
+    case ',':
+        return 5;
+    case '.':
+        return 20;
+    case '_':
+        return 30;
+    default:
+        return 5;
+    }
+}
+
+static void playSong(uint8_t *song) {
+    uint32_t note = 0;
+    uint32_t dur  = 0;
+    uint32_t pause = 0;
+
+    /*
+     * A song is a collection of tones where each tone is
+     * a note, duration and pause, e.g.
+     *
+     * "E2,F4,"
+     */
+
+    while(*song != '\0') {
+        note = getNote(*song++);
+        if (*song == '\0')
+            break;
+        dur  = getDuration(*song++);
+        if (*song == '\0')
+            break;
+        pause = getPause(*song++);
+
+        playNote(note, dur);
+        //delay32Ms(0, pause);
+        Timer0_Wait(pause);
+
+    }
+}
+
+static uint8_t * song = (uint8_t*)"G1,G1,G1";
+
+
+int p(int n)
+{
+    int i = 0;
+    int s = 1;
+    for(i=0; i<n;i++)
+        s *= 2;
+    return s;
+}
+
+char* svetki(int t, int o)
+{
+
+	//vkupno = "0000";
+
+	vkupno[0] = '0';
+	vkupno[1] = '0';
+	vkupno[2] = '0';
+	vkupno[3] = 'x';
+	vkupno[4] = '\0';
+
+	if(t < 4){
+		vkupno[3] = (char)(p(t) - 1 + 48);
+	} else if(t == 4){
+		vkupno[3] = 'f';
+	}
+	else if(t > 4 && t < 8){
+		vkupno[3] = 'f';
+		vkupno[2] = (char)(p(t-4) - 1 + 48);
+	} else {
+		vkupno[3] = 'f';
+		vkupno[2] = 'f';
+	}
+
+
+	if(o < 4){
+		vkupno[1] = (char)(p(o) - 1 + 48);
+	} else if(o == 4){
+		vkupno[1] = 'f';
+	}
+	else if(o > 4 && o < 8){
+		vkupno[1] = 'f';
+		vkupno[0] = (char)(p(o-4) - 1 + 48);
+	} else {
+		vkupno[1] = 'f';
+		vkupno[0] = 'f';
+	}
+
+	return vkupno;
+}
+
+void sveti_temperatra(int32_t temperatura)
+{
+	int temp = temperatura/5;
+	if(temp >6){
+		//sviri
+		playSong(song);
+	}
+	char rez[4];
+	svetki(temp, 0);
+
+	long sv = strtol(vkupno, NULL, 16);
+	pca9532_setLeds(sv, 0xffff);
+}
+
+void sveti_osvetluvanje(int32_t osvetluvanje)
+{
+	int osv = osvetluvanje/5;
+	svetki(0, osv);
+	long sv = strtol(vkupno, NULL, 16);
+	pca9532_setLeds(sv, 0xffff);
+}
+
+void draw_graph_real_time(int32_t values[13], int n, char* measurements)
+{
+	int i = 0;
+	oled_clearScreen(OLED_COLOR_WHITE);
+	oled_putString(12, 1, measurements, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+	for(int j = n-1, k = 96; j > 0; j--, k-=8)
+		oled_line(k-8, 64 - values[j-1], k, 64 - values[j], OLED_COLOR_BLACK);
+
+	if(measurement_option == 1){
+		sveti_temperatra(values[0]);
+		printf("Temperatura: %d\n", values[0]);
+	} else if(measurement_option == 2){
+		sveti_osvetluvanje(values[0]);
+		printf("Svetlina: %d\n", values[0]);
+	}
+
+}
+
+void zapisi (int32_t temperatura, uint32_t osvetluvanje, uint32_t potenciometar, int i)
+{
+	int dolzina_zapis = 11;
+	int mem = 0;
+	int br = 90;
+	if(i > br){
+		i = 0;
+	}
+
+	char b[dolzina_zapis];
+
+	//sostavi zapis
+	sprintf(b, "%03d%04d%04d", temperatura, osvetluvanje, potenciometar);
+
+	//ke zapiseme na pozicija i do i+11
+	int pozicija = i*dolzina_zapis;
+	eeprom_write(b, pozicija, dolzina_zapis);
+
+	i++;
+}
+
 int main (void)
+
 {
     init_i2c();
     init_ssp();
     init_adc();
 
+	eeprom_init();
     oled_init();
     light_init();
     temp_init (&getTicks);
@@ -318,22 +633,78 @@ int main (void)
 	oled_circle(5, 22, 3, OLED_COLOR_BLACK);
 	led7seg_setChar('1', FALSE);
 	while(1) {
+
 		btn2 = ((GPIO_ReadValue(1) >> 31) & 0x01);
 		Timer0_Wait(200);
 		if(btn2 == 0) {
 			btn2 = 1;
 			switch(mode) {
-			case 1:
+			case 1: //real time
 				display_menu();
 				display_working_modes();
 				oled_circle(5, 22, 3, OLED_COLOR_BLACK);
+
 				break;
-			case 2:
-				display_menu();
-				display_working_modes();
-				oled_circle(5, 37, 3, OLED_COLOR_BLACK);
+			case 2: //save
+				oled_clearScreen(OLED_COLOR_WHITE);
+				oled_putString(1,1,  "Choose time!", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+				while(1){
+					btn2 = ((GPIO_ReadValue(1) >> 31) & 0x01); //enter
+					btn1 = ((GPIO_ReadValue(0) >> 4) & 0x01); //++
+					//printf("while\n", ch7seg++);
+
+					if(btn1 == 0){
+						Timer0_Wait(200);
+						ch7seg++;
+						change7Seg();
+						printf("ch7seg++: %d\n", ch7seg);
+						printf("n: %d\n 0", 0);
+					}
+					if(btn2 == 0){
+						Timer0_Wait(200);
+
+						int n = 0;
+						// oled_clearScreen(OLED_COLOR_WHITE);
+						// oled_putString(1,1,  ch7seg, OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+						// oled_putString(1,8,  " minutes", OLED_COLOR_BLACK, OLED_COLOR_WHITE);
+
+						printf("n: %d\n", 0);
+
+						while(n < 90) {
+							printf("n: %d\n", n);
+
+							//zemi merki za temperatura, osvetluvanje i potenciometar
+							int32_t t = 0;
+							int32_t tn = 0;
+							uint32_t lux = 0;
+							uint32_t luxn = 0;
+							uint32_t p = 0;
+							int32_t pn = 0;
+
+							t = temp_read();
+					    	tn = normalize_temperature(t);
+					    	lux = light_read();
+					    	luxn = normalize_light(lux);
+					    	p = ADC_ChannelGetData(LPC_ADC,ADC_CHANNEL_0);
+					    	pn = normalize_potentiometer(p);
+
+					    	//zapisi
+							zapisi(tn, luxn, pn, n);
+							n++;
+							//cekaj
+							Timer0_Wait(ch7seg*2/3);
+						}
+
+						display_working_modes();
+						btn1 = 1;
+						break;
+					}
+				}
 				break;
-			case 3:
+			case 0: //read
+				printf("Option 3.");
+
 				display_menu();
 				display_working_modes();
 				oled_circle(5, 52, 3, OLED_COLOR_BLACK);
@@ -365,5 +736,6 @@ int main (void)
 				}
 			Timer0_Wait(2000);
 		}
+
 	}
 }
